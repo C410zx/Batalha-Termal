@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Batalha Termal</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <style>
+        :root {
+            --primary: #ff6b35;
+            --secondary: #004e89;
+            --accent: #ffbe0b;
+            --background: #f8f9fa;
+            --card-bg: #ffffff;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--background);
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        h1 {
+            color: var(--primary);
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5rem;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        }
+        
+        .game-area {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .players-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .player {
+            background-color: var(--card-bg);
+            border-radius: 10px;
+            padding: 15px;
+            width: 200px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .player.active {
+            border: 3px solid var(--accent);
+            transform: translateY(-5px);
+        }
+        
+        .player-name {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: var(--secondary);
+        }
+        
+        .player-cards {
+            display: flex;
+            gap: 5px;
+            min-height: 60px;
+        }
+        
+        .card {
+            width: 40px;
+            height: 60px;
+            background-color: var(--primary);
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            transform-style: preserve-3d;
+            color: white;
+            font-size: 24px;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .card.flipped {
+            background-color: var(--card-bg);
+            color: #333;
+        }
+        
+        .card.correct::after {
+            content: "✅";
+            position: absolute;
+            font-size: 20px;
+        }
+        
+        .card.wrong::after {
+            content: "❌";
+            position: absolute;
+            font-size: 20px;
+        }
+        
+        .card.flip-animation {
+            animation: flip 0.6s ease forwards;
+        }
+        
+        @keyframes flip {
+            0% { transform: rotateY(0deg); }
+            50% { transform: rotateY(90deg); }
+            100% { transform: rotateY(180deg); }
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        button {
+            background-color: var(--secondary);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        button:hover {
+            background-color: var(--primary);
+            transform: translateY(-2px);
+        }
+        
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .game-info {
+            background-color: var(--card-bg);
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .round-info {
+            font-weight: bold;
+            color: var(--secondary);
+        }
+        
+        .status {
+            margin-top: 10px;
+            font-style: italic;
+        }
+        
+        @media (max-width: 768px) {
+            .players-container {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .player {
+                width: 80%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔥❄️ Batalha Termal ❄️🔥</h1>
+        
+        <div class="game-info">
+            <div class="round-info">Rodada: <span id="round-number">1</span> | Turno: <span id="current-player">-</span></div>
+            <div class="status" id="game-status">Aguardando jogadores...</div>
+        </div>
+        
+        <div class="game-area">
+            <div class="players-container" id="players-container">
+                <!-- Jogadores serão adicionados dinamicamente aqui -->
+            </div>
+            
+            <div class="controls">
+                <button id="start-game" disabled>Iniciar Jogo</button>
+                <button id="restart-game">Reiniciar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuração do Firebase
+        const firebaseConfig = {
+            apiKey: "SUA_API_KEY",
+            authDomain: "SEU_PROJETO.firebaseapp.com",
+            databaseURL: "https://SEU_PROJETO.firebaseio.com",
+            projectId: "SEU_PROJETO",
+            storageBucket: "SEU_PROJETO.appspot.com",
+            messagingSenderId: "SEU_SENDER_ID",
+            appId: "SEU_APP_ID"
+        };
+        
+        // Inicializa o Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        
+        // Estado do jogo
+        const gameState = {
+            players: {},
+            currentPlayer: null,
+            round: 1,
+            gameStarted: false,
+            deck: [],
+            discarded: []
+        };
+        
+        // Cartas do jogo
+        const cards = [
+            { id: 1, name: "Fogo", emoji: "🔥", value: 5 },
+            { id: 2, name: "Gelo", emoji: "❄️", value: 2 },
+            { id: 3, name: "Lava", emoji: "🌋", value: 7 },
+            { id: 4, name: "Vapor", emoji: "💨", value: 4 },
+            { id: 5, name: "Eletricidade", emoji: "⚡", value: 6 },
+            { id: 6, name: "Água Termal", emoji: "♨️", value: 3 },
+            { id: 7, name: "Calor Solar", emoji: "☀️", value: 8 },
+            { id: 8, name: "Termômetro", emoji: "🌡️", value: 1 }
+        ];
+        
+        // Variáveis do jogador local
+        let localPlayerId = null;
+        let localPlayerName = null;
+        
+        // Elementos da UI
+        const playersContainer = document.getElementById('players-container');
+        const startGameBtn = document.getElementById('start-game');
+        const restartGameBtn = document.getElementById('restart-game');
+        const roundNumberEl = document.getElementById('round-number');
+        const currentPlayerEl = document.getElementById('current-player');
+        const gameStatusEl = document.getElementById('game-status');
+        
+        // Inicialização do jogo
+        function initGame() {
+            // Gera um ID único para o jogador local
+            localPlayerId = generatePlayerId();
+            localPlayerName = prompt("Digite seu nome:", `Jogador${Math.floor(Math.random() * 1000)}`) || `Jogador${Math.floor(Math.random() * 1000)}`;
+            
+            // Registra o jogador no Firebase
+            database.ref('players/' + localPlayerId).set({
+                name: localPlayerName,
+                cards: [],
+                ready: false
+            });
+            
+            // Monitora mudanças no estado do jogo
+            database.ref('gameState').on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    updateGameState(data);
+                }
+            });
+            
+            // Monitora jogadores
+            database.ref('players').on('value', (snapshot) => {
+                const players = snapshot.val();
+                if (players) {
+                    updatePlayersList(players);
+                    
+                    // Habilita o botão de iniciar se houver pelo menos 2 jogadores e o jogador local for o primeiro
+                    const playerIds = Object.keys(players);
+                    startGameBtn.disabled = playerIds.length < 2 || playerIds[0] !== localPlayerId;
+                }
+            });
+            
+            // Configura eventos dos botões
+            startGameBtn.addEventListener('click', startGame);
+            restartGameBtn.addEventListener('click', restartGame);
+        }
+        
+        // Atualiza o estado do jogo local com os dados do Firebase
+        function updateGameState(data) {
+            gameState.players = data.players || {};
+            gameState.currentPlayer = data.currentPlayer;
+            gameState.round = data.round || 1;
+            gameState.gameStarted = data.gameStarted || false;
+            gameState.deck = data.deck || [];
+            gameState.discarded = data.discarded || [];
+            
+            // Atualiza a UI
+            renderGame();
+        }
+        
+        // Atualiza a lista de jogadores
+        function updatePlayersList(players) {
+            gameState.players = players;
+            renderPlayers();
+        }
+        
+        // Renderiza os jogadores na UI
+        function renderPlayers() {
+            playersContainer.innerHTML = '';
+            
+            Object.entries(gameState.players).forEach(([id, player]) => {
+                const playerEl = document.createElement('div');
+                playerEl.className = `player ${id === gameState.currentPlayer ? 'active' : ''}`;
+                playerEl.innerHTML = `
+                    <div class="player-name">${player.name} ${id === localPlayerId ? '(Você)' : ''}</div>
+                    <div class="player-cards" id="cards-${id}"></div>
+                `;
+                
+                playersContainer.appendChild(playerEl);
+                
+                // Renderiza as cartas do jogador
+                const cardsContainer = document.getElementById(`cards-${id}`);
+                if (player.cards && player.cards.length > 0) {
+                    player.cards.forEach((card, index) => {
+                        const cardEl = document.createElement('div');
+                        cardEl.className = 'card';
+                        cardEl.dataset.cardIndex = index;
+                        cardEl.dataset.playerId = id;
+                        
+                        if (card.flipped) {
+                            cardEl.classList.add('flipped');
+                            cardEl.innerHTML = `${card.emoji} ${card.name}`;
+                            
+                            if (card.correct) {
+                                cardEl.classList.add('correct');
+                            } else if (card.wrong) {
+                                cardEl.classList.add('wrong');
+                            }
+                        } else {
+                            cardEl.innerHTML = '?';
+                        }
+                        
+                        // Só permite clicar nas próprias cartas
+                        if (id === localPlayerId && !card.flipped && gameState.currentPlayer === localPlayerId) {
+                            cardEl.addEventListener('click', () => playCard(index));
+                        }
+                        
+                        cardsContainer.appendChild(cardEl);
+                    });
+                }
+            });
+            
+            // Atualiza informações da rodada
+            roundNumberEl.textContent = gameState.round;
+            currentPlayerEl.textContent = gameState.players[gameState.currentPlayer]?.name || '-';
+            
+            // Atualiza status do jogo
+            if (!gameState.gameStarted) {
+                gameStatusEl.textContent = `Aguardando jogadores... (${Object.keys(gameState.players).length}/4)`;
+            } else if (gameState.currentPlayer === localPlayerId) {
+                gameStatusEl.textContent = "É seu turno! Clique em uma carta para jogar.";
+            } else {
+                gameStatusEl.textContent = `Aguardando jogador ${gameState.players[gameState.currentPlayer]?.name}...`;
+            }
+        }
+        
+        // Renderiza o jogo completo
+        function renderGame() {
+            renderPlayers();
+        }
+        
+        // Inicia o jogo
+        function startGame() {
+            // Cria e embaralha o baralho
+            const deck = [];
+            for (let i = 0; i < 4; i++) { // 4 cópias de cada carta
+                cards.forEach(card => {
+                    deck.push({...card});
+                });
+            }
+            
+            shuffleArray(deck);
+            
+            // Distribui 4 cartas para cada jogador
+            const players = {...gameState.players};
+            const playerIds = Object.keys(players);
+            
+            playerIds.forEach(playerId => {
+                players[playerId].cards = deck.splice(0, 4).map(card => ({
+                    ...card,
+                    flipped: false,
+                    correct: false,
+                    wrong: false
+                }));
+                players[playerId].ready = true;
+            });
+            
+            // Define o primeiro jogador
+            const currentPlayer = playerIds[0];
+            
+            // Atualiza o estado do jogo no Firebase
+            database.ref('gameState').set({
+                players,
+                currentPlayer,
+                round: 1,
+                gameStarted: true,
+                deck,
+                discarded: []
+            });
+        }
+        
+        // Reinicia o jogo
+        function restartGame() {
+            database.ref('gameState').remove();
+            database.ref('players').remove().then(() => {
+                initGame();
+            });
+        }
+        
+        // Joga uma carta
+        function playCard(cardIndex) {
+            if (gameState.currentPlayer !== localPlayerId) return;
+            
+            const player = gameState.players[localPlayerId];
+            const card = player.cards[cardIndex];
+            
+            // Marca a carta como virada e verifica se é correta (lógica simples de exemplo)
+            card.flipped = true;
+            
+            // Lógica de exemplo: cartas com valor maior que 4 são "corretas"
+            if (card.value > 4) {
+                card.correct = true;
+            } else {
+                card.wrong = true;
+            }
+            
+            // Atualiza o estado do jogador
+            database.ref(`gameState/players/${localPlayerId}`).set(player);
+            
+            // Passa para o próximo jogador
+            const playerIds = Object.keys(gameState.players);
+            const currentIndex = playerIds.indexOf(localPlayerId);
+            const nextIndex = (currentIndex + 1) % playerIds.length;
+            const nextPlayer = playerIds[nextIndex];
+            
+            // Se voltou ao primeiro jogador, incrementa a rodada
+            let newRound = gameState.round;
+            if (nextIndex === 0) {
+                newRound++;
+            }
+            
+            database.ref('gameState').update({
+                currentPlayer: nextPlayer,
+                round: newRound
+            });
+        }
+        
+        // Funções auxiliares
+        function generatePlayerId() {
+            return 'player-' + Math.random().toString(36).substr(2, 9);
+        }
+        
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+        
+        // Inicializa o jogo quando a página carrega
+        window.addEventListener('load', initGame);
+    </script>
+</body>
+</html>
